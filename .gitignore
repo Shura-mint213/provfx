@@ -1,0 +1,19 @@
+# Исключаем конфигурационный файл
+config.php
+
+# Стандартные исключения для PHP‑проектов
+/vendor/
+/node_modules/
+composer.lock
+.env
+*.log
+*.tmp
+*.bak
+
+# IDE и системные файлы
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

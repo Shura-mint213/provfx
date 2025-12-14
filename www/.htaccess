@@ -1,0 +1,13 @@
+# Запрещаем доступ к файлам вне public_html
+<Files ~ "(config\.php|init\.php)">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Разрешаем выполнение PHP-файлов
+<FilesMatch "\.php$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+Options -Indexes
