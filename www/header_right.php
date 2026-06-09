@@ -8,7 +8,7 @@ $is_logged_in = !!$viewerId;
 // Получаем данные пользователя
 $user = null;
 if ($is_logged_in) {
-    $stmt = $pdo->prepare("SELECT student_id, login FROM students WHERE student_id = ?");
+    $stmt = $pdo->prepare("SELECT student_id, login, role FROM students WHERE student_id = ?");
     $stmt->execute([$viewerId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 }
@@ -49,6 +49,13 @@ if ($is_logged_in) {
                     class="block px-4 py-2 text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                     Черный список
                 </a>
+
+                <?php if (($user['role'] ?? 'user') === 'admin'): ?>
+                    <a href="/admin/users.php"
+                        class="block px-4 py-2 text-gray-900 hover:bg-gray-100 hover:text-gray-900">
+                        Админ-панель
+                    </a>
+                <?php endif; ?>
 
                 <a href="/logout.php"
                     class="block px-4 py-2 text-red-600 hover:bg-gray-100 hover:text-red-600">

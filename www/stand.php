@@ -103,7 +103,7 @@ $reflections = $reflections->fetchAll(PDO::FETCH_ASSOC);
 
 $progressStmt = $pdo->prepare("
     SELECT name 
-    FROM progress_points 
+    FROM terrell_points 
     WHERE student_id = ? 
     ORDER BY position ASC
 ");

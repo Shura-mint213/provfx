@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <head>
     <meta charset="UTF-8">
-    <title>Вход — Трек МАИ</title>
+    <title>Вход — Трек ТС</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 

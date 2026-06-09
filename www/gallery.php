@@ -9,21 +9,24 @@ if (!$viewerId) {
 }
 
 /* ===============================
-   Проверка публикации стенда
+   Проверка публикации стенда и роли
    =============================== */
 $stmt = $pdo->prepare("
-    SELECT is_published 
+    SELECT is_published, role 
     FROM students 
     WHERE student_id = :id 
     LIMIT 1
 ");
 $stmt->execute(['id' => $viewerId]);
-$userPublished = (int)$stmt->fetchColumn();
+$viewerData = $stmt->fetch(PDO::FETCH_ASSOC);
+$userPublished = (int)($viewerData['is_published'] ?? 0);
+$viewerRole = $viewerData['role'] ?? 'user';
+$isAdmin = ($viewerRole === 'admin');
 
 /* ===============================
-   Если стенд НЕ опубликован — СТОП
+   Если стенд НЕ опубликован — СТОП (кроме админов)
    =============================== */
-if (!$userPublished) {
+if (!$userPublished && !$isAdmin) {
 ?>
     <!DOCTYPE html>
     <html lang="ru">
@@ -40,7 +43,7 @@ if (!$userPublished) {
         <!-- Header -->
         <header class="bg-indigo-700 text-white shadow-lg">
             <div class="container mx-auto px-6 py-6 flex justify-between items-center">
-                <h1 class="text-3xl font-bold">Трек студента МАИ</h1>
+                <h1 class="text-3xl font-bold">Трек студента ТС</h1>
                 <div class="flex items-center space-x-4">
                     <?php include __DIR__ . '/header_right.php'; ?>
                 </div>
@@ -117,6 +120,7 @@ $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Галерея стендов</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
@@ -124,7 +128,7 @@ $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <!-- Header -->
     <header class="bg-indigo-700 text-white shadow-lg">
         <div class="container mx-auto px-6 py-6 flex justify-between items-center">
-            <h1 class="text-3xl font-bold">Трек студента МАИ</h1>
+            <h1 class="text-3xl font-bold">Трек студента ТС</h1>
             <div class="flex items-center space-x-4">
                 <?php include __DIR__ . '/header_right.php'; ?>
             </div>
@@ -132,6 +136,50 @@ $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </header>
 
     <main class="container mx-auto px-6 py-12">
+
+        <?php if ($isAdmin): ?>
+            <!-- Панель администратора (Выгрузка данных) -->
+            <div class="bg-white rounded-2xl shadow-md p-6 mb-8 border border-indigo-50/80 bg-gradient-to-r from-white via-indigo-50/10 to-white flex flex-col md:flex-row justify-between items-center gap-4 hover:shadow-lg transition duration-300">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl shadow-inner"><i class="fa-solid fa-download"></i></div>
+                    <div>
+                        <h3 class="font-extrabold text-slate-800 tracking-tight">Экспорт данных системы</h3>
+                        <p class="text-xs text-slate-500 font-medium">Административный инструмент выгрузки данных БД (без конфиденциальных сведений)</p>
+                    </div>
+                </div>
+                
+                <div class="relative inline-block text-left">
+                    <button id="exportDropdownBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold transition duration-200 flex items-center shadow-md shadow-indigo-100">
+                        <i class="fa-solid fa-file-export mr-2"></i> Выгрузить данные из БД <i class="fa-solid fa-chevron-down ml-2 text-xs"></i>
+                    </button>
+                    <div id="exportMenu" class="hidden absolute right-0 mt-2 w-48 bg-white shadow-xl rounded-xl z-50 overflow-hidden border border-slate-100 text-sm">
+                        <a href="admin/export.php?format=xlsx" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-excel text-emerald-600 mr-2.5"></i> Формат XLSX</a>
+                        <a href="admin/export.php?format=xls" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-excel text-teal-600 mr-2.5"></i> Формат XLS</a>
+                        <a href="admin/export.php?format=csv" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-csv text-blue-600 mr-2.5"></i> Формат CSV</a>
+                        <a href="admin/export.php?format=json" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-code text-amber-600 mr-2.5"></i> Формат JSON</a>
+                        <a href="admin/export.php?format=xml" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-code text-orange-600 mr-2.5"></i> Формат XML</a>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                (function() {
+                    const btn = document.getElementById('exportDropdownBtn');
+                    const menu = document.getElementById('exportMenu');
+                    if (btn && menu) {
+                        btn.addEventListener('click', e => {
+                            e.stopPropagation();
+                            menu.classList.toggle('hidden');
+                        });
+                        document.addEventListener('click', e => {
+                            if (!btn.contains(e.target) && !menu.contains(e.target)) {
+                                menu.classList.add('hidden');
+                            }
+                        });
+                    }
+                })();
+            </script>
+        <?php endif; ?>
 
         <!-- Поиск -->
         <div class="max-w-2xl mx-auto mb-10">

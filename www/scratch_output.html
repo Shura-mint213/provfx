@@ -1,400 +1,5 @@
-<?php
-require_once __DIR__ . '/../init.php';
 
-$error = '';
-$success = '';
-$userId = $_SESSION['user_id'] ?? null;
-$isNew = isset($_GET['new']) && $_GET['new'] == 1;
-$hasOpenProject = false;
-
-// =======================
-// ЗАГРУЖАЕМ ПОЛЬЗОВАТЕЛЯ
-// =======================
-$user = null;
-$progress = []; // Инициализируем пустой массив
-if ($userId && !$isNew) {
-    // Загружаем данные студента
-    $stmt = $pdo->prepare("SELECT * FROM students WHERE student_id = ?");
-    $stmt->execute([$userId]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // Загружаем динамические таблицы
-    $stmt = $pdo->prepare("SELECT * FROM skills WHERE student_id=? ORDER BY id ASC");
-    $stmt->execute([$userId]);
-    $skills = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $stmt = $pdo->prepare("SELECT * FROM competencies WHERE student_id=? ORDER BY id ASC");
-    $stmt->execute([$userId]);
-    $competencies = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Загружаем проекты через таблицу project_members
-    $stmt = $pdo->prepare("
-        SELECT p.*, pm.role 
-        FROM projects p
-        INNER JOIN project_members pm ON p.id = pm.project_id
-        WHERE pm.student_id = ?
-        ORDER BY p.id ASC
-    ");
-    $stmt->execute([$userId]);
-    $projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // ПРОВЕРКА НАЛИЧИЯ ОТКРЫТОГО ПРОЕКТА
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) 
-        FROM projects p
-        INNER JOIN project_members pm ON p.id = pm.project_id
-        WHERE pm.student_id = ? AND p.status = 'в процессе'
-    ");
-    $stmt->execute([$userId]);
-    $hasOpenProject = ($stmt->fetchColumn() > 0);
-
-    $stmt = $pdo->prepare("SELECT * FROM criteria WHERE student_id=? ORDER BY id ASC");
-    $stmt->execute([$userId]);
-    $criteria = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $stmt = $pdo->prepare("SELECT * FROM terrell_points WHERE student_id=? ORDER BY position ASC");
-    $stmt->execute([$userId]);
-    $progress = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $stmt = $pdo->prepare("SELECT * FROM reflections WHERE student_id=? ORDER BY id ASC");
-    $stmt->execute([$userId]);
-    $reflections = $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
-
-// =======================
-// ЕСЛИ POST — ОБРАБОТКА
-// =======================
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    // ------ Все поля из формы ------
-    $form = [
-        'zachetka'     => trim($_POST['zachetka'] ?? ''),
-        'login'        => trim($_POST['login'] ?? ''),
-        'password'     => $_POST['password'] ?? '',
-        'direction'    => $_POST['direction'] ?? '',
-        'group_number' => $_POST['group_number'] ?? '',
-        'semester'     => (int)($_POST['semester'] ?? 0),
-        'department'   => $_POST['department'] ?? '',
-        'about'        => $_POST['about'] ?? '',
-        'hobbies'      => $_POST['hobbies'] ?? '',
-        'soft_skills'  => $_POST['soft_skills'] ?? '',
-        'smart_goal'   => $_POST['smart_goal'] ?? '',
-        'deadline'     => $_POST['deadline'] ?: null,
-        'is_published' => isset($_POST['is_published']) ? 1 : 0
-    ];
-
-    // ------ Обработка слабой стороны ------
-    $selectedWeakness = $_POST['weakness'] ?? '';
-    $weaknessOther   = trim($_POST['weakness_other'] ?? '');
-
-    // Для базы сохраняем текстовое значение
-    $form['weakness'] = ($selectedWeakness === 'другое') ? $weaknessOther : $selectedWeakness;
-
-    // Для возврата данных в форму при ошибке
-    $form['weakness_selected'] = $selectedWeakness;
-    $form['weakness_other']    = $weaknessOther;
-
-    // ------ Динамические поля ------
-    $skills        = $_POST['skills'] ?? [];
-    $competencies  = $_POST['competencies'] ?? [];
-    $projects      = $_POST['projects'] ?? [];
-    $criteria      = $_POST['criteria'] ?? [];
-    $progress      = $_POST['terrell_points'] ?? [];
-    $reflections   = $_POST['reflections'] ?? [];
-
-    // =======================
-    // ВАЛИДАЦИЯ
-    // =======================
-    $requiredFields = [
-        'zachetka' => 'Номер зачётки',
-        'login' => 'Логин',
-    ];
-
-    if ($isNew) {
-        $requiredFields['password'] = 'Пароль';
-    }
-
-    $emptyFields = [];
-    foreach ($requiredFields as $field => $label) {
-        if (trim($form[$field] ?? '') === '') {
-            $emptyFields[] = $label;
-        }
-    }
-
-    if ($emptyFields) {
-        $error = "Заполните обязательные поля: " . implode(', ', $emptyFields);
-    }
-
-    // Проверка уникальности номера зачётки (исключаем текущего пользователя)
-    if (!$error) {
-        $stmtCheck = $pdo->prepare("SELECT student_id FROM students WHERE zachetka = ? AND student_id != ?");
-        $checkId = $userId ?: 0; // если новый — ищем все совпадения, если редактируем — исключаем себя
-        $stmtCheck->execute([$form['zachetka'], $checkId]);
-        if ($stmtCheck->fetch()) {
-            $error = "Номер зачётки «{$form['zachetka']}» уже используется другим студентом!";
-        }
-    }
-
-    // Проверка на количество проектов "в процессе"
-    if (!$error) {
-        $inProgressCount = 0;
-        if (!empty($projects) && is_array($projects)) {
-            foreach ($projects as $p) {
-                if (isset($p['status']) && $p['status'] === 'в процессе') {
-                    $inProgressCount++;
-                }
-            }
-        }
-        if ($inProgressCount > 1) {
-            $error = "Нельзя, чтобы у одного пользователя было больше одного проекта в процессе.";
-        }
-    }
-    // Если ошибка — возвращаем данные обратно в форму
-    if ($error) {
-        $user = $form;
-        $skills       = $skills;
-        $competencies = $competencies;
-        $projects     = $projects;
-        $criteria     = array_map(fn($c) => ['criterion' => $c], $criteria);
-        $progress     = $progress;
-        $reflections  = $reflections;
-    } else {
-
-        // =======================
-        // СОХРАНЕНИЕ В БД
-        // =======================
-        $avatar_blob = $user['avatar'] ?? null;
-        if (!empty($_FILES['avatar']['tmp_name'])) {
-            if ($_FILES['avatar']['error'] === 0 && $_FILES['avatar']['size'] <= 2 * 1024 * 1024) {
-                $avatar_blob = file_get_contents($_FILES['avatar']['tmp_name']);
-            }
-        }
-
-        $password_hash = $form['password']
-            ? password_hash($form['password'], PASSWORD_DEFAULT)
-            : ($user['password'] ?? '');
-
-        if ($user) {
-            // ---- UPDATE ----
-            $sql = "UPDATE students SET
-                zachetka=?, login=?, direction=?, group_number=?, semester=?, department=?,
-                avatar=?, about=?, hobbies=?, soft_skills=?, weakness=?, smart_goal=?, deadline=?, is_published=?";
-            $params = [
-                $form['zachetka'],
-                $form['login'],
-                $form['direction'],
-                $form['group_number'],
-                $form['semester'],
-                $form['department'],
-                $avatar_blob,
-                $form['about'],
-                $form['hobbies'],
-                $form['soft_skills'],
-                $form['weakness'],
-                $form['smart_goal'],
-                $form['deadline'],
-                $form['is_published']
-            ];
-
-            if ($form['password']) {
-                $sql .= ", password=?";
-                $params[] = $password_hash;
-            }
-
-            $sql .= " WHERE student_id=?";
-            $params[] = $userId;
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-
-            $student_id = $userId;
-        } else {
-            // ---- INSERT ----
-            $stmt = $pdo->prepare("
-                INSERT INTO students
-                (zachetka, login, password, direction, group_number, semester, department, avatar,
-                    about, hobbies, soft_skills, weakness, smart_goal, deadline, is_published)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-
-            $stmt->execute([
-                $form['zachetka'],
-                $form['login'],
-                $password_hash,
-                $form['direction'],
-                $form['group_number'],
-                $form['semester'],
-                $form['department'],
-                $avatar_blob,
-                $form['about'],
-                $form['hobbies'],
-                $form['soft_skills'],
-                $form['weakness'],
-                $form['smart_goal'],
-                $form['deadline'],
-                $form['is_published']
-            ]);
-
-            $student_id = $pdo->lastInsertId();
-            $_SESSION['user_id'] = $student_id;
-            $_SESSION['login'] = $form['login'];
-            $_SESSION['zachetka'] = $form['zachetka'];
-        }
-
-        /**
-         * Функция проверки: может ли пользователь создать новый проект?
-         */
-        function canCreateProject($pdo, $userId)
-        {
-            if (!$userId) return true;
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM projects p 
-                           JOIN project_members pm ON p.id = pm.project_id 
-                           WHERE pm.student_id = ? AND p.status = 'в процессе'");
-            $stmt->execute([$userId]);
-            return ($stmt->fetchColumn() == 0);
-        }
-
-        /**
-         * Функция проверки: открыт ли конкретный проект для редактирования?
-         */
-        function isProjectEditable($pdo, $projectId)
-        {
-            $stmt = $pdo->prepare("SELECT status FROM projects WHERE id = ?");
-            $stmt->execute([$projectId]);
-            $status = $stmt->fetchColumn();
-            return ($status === 'open' || $status === 'в процессе');
-        }
-
-        // Функция сохранения динамических таблиц
-        function saveTable($pdo, $table, $rows, $student_id, $fields)
-        {
-            $pdo->prepare("DELETE FROM $table WHERE student_id=?")->execute([$student_id]);
-            foreach ($rows as $row) {
-                $clean = [];
-                foreach ($fields as $f) {
-                    $clean[$f] = trim($row[$f] ?? '');
-                }
-                if (!array_filter($clean)) continue;
-                $placeholders = implode(",", array_fill(0, count($fields) + 1, "?"));
-                $colNames = implode(",", $fields);
-                $pdo->prepare("INSERT INTO $table (student_id, $colNames) VALUES ($placeholders)")
-                    ->execute(array_merge([$student_id], array_values($clean)));
-            }
-        }
-
-        saveTable($pdo, 'skills', $skills, $student_id, ['name', 'level']);
-        saveTable($pdo, 'competencies', $competencies, $student_id, ['name', 'level', 'artifact_url', 'type']);
-        saveTable($pdo, 'criteria', array_map(fn($c) => ['criterion' => $c], $criteria), $student_id, ['criterion']);
-        saveTable($pdo, 'terrell_points', $progress, $student_id, ['name', 'type', 'comment', 'position']);
-        saveTable($pdo, 'reflections', $reflections, $student_id, ['what_worked', 'what_failed', 'changes']);
-
-        // ==============================
-        // СОХРАНЕНИЕ ПРОЕКТОВ (ИСПРАВЛЕНО)
-        // ==============================
-        // Находим существующие связи с проектами до сохранения изменений
-        $existingProjectIds = [];
-        $stmt = $pdo->prepare("SELECT project_id FROM project_members WHERE student_id = ?");
-        $stmt->execute([$student_id]);
-        $existingProjectIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-        $submittedProjectIds = [];
-        if (!empty($projects) && is_array($projects)) {
-            foreach ($projects as $p) {
-                if (!empty($p['id'])) {
-                    $submittedProjectIds[] = (int)$p['id'];
-                }
-            }
-        }
-
-        // Вычисляем проекты, которые были удалены пользователем из формы
-        $deletedProjectIds = array_diff($existingProjectIds, $submittedProjectIds);
-
-        foreach ($deletedProjectIds as $pid) {
-            // Если студент является владельцем/создателем проекта, удаляем сам проект из таблицы projects (каскад удалит участников)
-            $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ? AND student_id = ?");
-            $stmt->execute([$pid, $student_id]);
-
-            // Если он был просто участником, удаляем его из участников проекта
-            $stmt = $pdo->prepare("DELETE FROM project_members WHERE student_id = ? AND project_id = ?");
-            $stmt->execute([$student_id, $pid]);
-        }
-
-        if (!empty($projects) && is_array($projects)) {
-            foreach ($projects as $p) {
-                // Если это новый проект (нет id)
-                if (empty($p['id']) && !empty($p['name'])) {
-                    // Создаем новый проект (с привязкой к владельцу student_id)
-                    $stmt = $pdo->prepare("
-                        INSERT INTO projects (student_id, name, description, tech_stack, role, repo_url, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $stmt->execute([
-                        $student_id,
-                        $p['name'] ?? '',
-                        $p['description'] ?? '',
-                        $p['tech_stack'] ?? '',
-                        $p['role'] ?? '',
-                        $p['repo_url'] ?? '',
-                        $p['status'] ?? 'в процессе'
-                    ]);
-
-                    $projectId = $pdo->lastInsertId();
-
-                    // Добавляем владельца в project_members
-                    $pdo->prepare("
-                        INSERT INTO project_members (project_id, student_id, role)
-                        VALUES (?, ?, 'owner')
-                    ")->execute([$projectId, $student_id]);
-                }
-                // Если существующий проект
-                else if (!empty($p['id'])) {
-                    // Обновляем проект
-                    $stmt = $pdo->prepare("
-                        UPDATE projects 
-                        SET name=?, description=?, tech_stack=?, role=?, repo_url=?, status=?
-                        WHERE id=?
-                    ");
-                    $stmt->execute([
-                        $p['name'] ?? '',
-                        $p['description'] ?? '',
-                        $p['tech_stack'] ?? '',
-                        $p['role'] ?? '',
-                        $p['repo_url'] ?? '',
-                        $p['status'] ?? 'в процессе',
-                        $p['id']
-                    ]);
-
-                    // Добавляем связь студента с проектом (если еще нет)
-                    $checkStmt = $pdo->prepare("SELECT id FROM project_members WHERE project_id = ? AND student_id = ?");
-                    $checkStmt->execute([$p['id'], $student_id]);
-                    if (!$checkStmt->fetch()) {
-                        $pdo->prepare("
-                            INSERT INTO project_members (project_id, student_id, role)
-                            VALUES (?, ?, 'owner')
-                        ")->execute([$p['id'], $student_id]);
-                    }
-                }
-            }
-        }
-
-        $is_published = !empty($_POST['is_published']);
-
-        // Обновляем сессию на всякий случай
-        $_SESSION['user_id'] = $student_id;
-        $_SESSION['login']    = $form['login'];
-
-        // Формируем URL с параметром saved=1
-        if ($is_published) {
-            // Опубликован → сразу на красивый стенд
-            header("Location: stand.php?id={$student_id}&saved=1");
-        } else {
-            // Не опубликован → в галерею с уведомлением
-            header("Location: gallery.php?saved=1");
-        }
-        exit;
-    }
-}
-?>
+Warning: Undefined array key "REQUEST_METHOD" in D:\Soft\Xampp\htdocs\public_html\form.php on line 67
 
 <!DOCTYPE html>
 <html lang="ru">
@@ -556,29 +161,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="flex items-center space-x-4">
                 <div class="w-12 h-12 bg-white text-indigo-700 font-bold flex items-center justify-center rounded-full">ТС</div>
                 <h1 class="text-3xl font-bold">
-                    <?= isset($_SESSION['user_id']) && !$isNew ? 'Редактирование стенда' : 'Создание стенда' ?>
-                </h1>
+                    Редактирование стенда                </h1>
             </div>
-            <?php if (isset($_SESSION['user_id']) && !$isNew): ?>
-                <div class="space-x-4">
-                    <?php include __DIR__ . '/notifications.php'; ?>
-                    <a href="gallery.php" class="bg-white text-indigo-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-100">Галерея</a>
+                            <div class="space-x-4">
+                    
+Warning: Undefined array key "REQUEST_METHOD" in D:\Soft\Xampp\htdocs\public_html\notifications.php on line 14
+
+<div class="relative inline-block">
+    <button id="notifBell" class="relative p-2 bg-white text-indigo-700 rounded-full hover:bg-gray-100 shadow">
+        <!-- колокольчик SVG -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+            </button>
+
+    <div id="notifList" class="hidden absolute right-0 mt-2 w-96 bg-white shadow-lg rounded-xl z-50 max-h-96 overflow-y-auto border border-gray-200">
+                    <div class="p-6 text-center text-gray-500 text-lg font-medium">
+                У вас нет новых уведомлений
+            </div>
+            </div>
+</div>
+
+<script>
+    const notifBtn = document.getElementById('notifBell');
+    const notifList = document.getElementById('notifList');
+
+    notifBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        notifList.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', e => {
+        if (!notifList.contains(e.target) && !notifBtn.contains(e.target)) {
+            notifList.classList.add('hidden');
+        }
+    });
+
+    document.querySelectorAll('.notifBtn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const invitationId = btn.dataset.id;
+            const action = btn.dataset.action;
+
+            fetch('notifications.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: `invitation_id=${encodeURIComponent(invitationId)}&action=${encodeURIComponent(action)}`
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        // удаляем карточку уведомления
+                        const card = btn.closest('div.border-b') || btn.closest('div.p-4');
+                        if (card) card.remove();
+
+                        const badge = document.querySelector('#notifBell span');
+                        if (badge) {
+                            let count = parseInt(badge.textContent) - 1;
+                            if (count <= 0) badge.remove();
+                            else badge.textContent = count;
+                        }
+
+                        // если пусто — заменить содержимое
+                        if (!notifList.querySelector('div.p-4')) {
+                            notifList.innerHTML = '<div class="p-6 text-center text-gray-500 text-lg font-medium">У вас нет новых уведомлений</div>';
+                        }
+                    } else {
+                        alert(data.message || 'Ошибка при обработке');
+                    }
+                }).catch(err => {
+                    console.error(err);
+                    alert('Сетевая ошибка');
+                });
+        });
+    });
+</script>                    <a href="gallery.php" class="bg-white text-indigo-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-100">Галерея</a>
                     <a href="logout.php" class="text-white hover:underline">Выйти</a>
                 </div>
-            <?php endif; ?>
-        </div>
+                    </div>
     </header>
 
 
     <div class="container mx-auto px-6 py-8">
 
-        <?php if ($error): ?>
-            <div class="bg-red-100 text-red-700 p-4 rounded-lg mb-4"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-        <?php if ($success): ?>
-            <div class="bg-green-100 text-green-700 p-4 rounded-lg mb-4"><?= htmlspecialchars($success) ?></div>
-        <?php endif; ?>
-
+                
         <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
             <!-- прогресс -->
             <div class="flex items-center justify-between mb-4">
@@ -595,61 +263,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="text-sm required">Номер зачётки</label>
-                                <input name="zachetka" value="<?= htmlspecialchars($user['zachetka'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg" required>
+                                <input name="zachetka" value="11432" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
                                 <label class="text-sm required">Логин (публичное имя)</label>
-                                <input name="login" value="<?= htmlspecialchars($user['login'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg" required>
+                                <input name="login" value="admin" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
-                            <?php if ($isNew): ?>
-                                <div>
-                                    <label class="text-sm required">Пароль</label>
-                                    <input type="password" name="password" class="w-full px-4 py-2 border rounded-lg" <?= $isNew ? 'required' : '' ?>>
-                                </div>
-                            <?php endif; ?>
-
+                            
                             <div>
                                 <label class="text-sm">Направление</label>
                                 <select name="direction" class="w-full px-4 py-2 border rounded-lg">
-                                    <option value="09.03.01" <?= ($user['direction'] ?? '') === '09.03.01' ? 'selected' : '' ?>>09.03.01 — Информатика и ВТ</option>
-                                    <option value="09.03.03" <?= ($user['direction'] ?? '') === '09.03.03' ? 'selected' : '' ?>>09.03.03 — Прикл. информатика</option>
+                                    <option value="09.03.01" selected>09.03.01 — Информатика и ВТ</option>
+                                    <option value="09.03.03" >09.03.03 — Прикл. информатика</option>
                                 </select>
                             </div>
                             <div>
                                 <label class="text-sm">Группа</label>
-                                <input name="group_number" value="<?= htmlspecialchars($user['group_number'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg">
+                                <input name="group_number" value="М8О-101Б-23231" class="w-full px-4 py-2 border rounded-lg">
                             </div>
                             <div>
                                 <label class="text-sm">Семестр</label>
                                 <select name="semester" class="w-full px-4 py-2 border rounded-lg">
-                                    <?php for ($s = 1; $s <= 8; $s++): ?>
-                                        <option value="<?= $s ?>" <?= ($user['semester'] ?? 0) == $s ? 'selected' : '' ?>><?= $s ?></option>
-                                    <?php endfor; ?>
-                                </select>
+                                                                            <option value="1" >1</option>
+                                                                            <option value="2" >2</option>
+                                                                            <option value="3" >3</option>
+                                                                            <option value="4" >4</option>
+                                                                            <option value="5" selected>5</option>
+                                                                            <option value="6" >6</option>
+                                                                            <option value="7" >7</option>
+                                                                            <option value="8" >8</option>
+                                                                    </select>
                             </div>
                             <div>
                                 <label class="text-sm">Кафедра</label>
-                                <input name="department" value="<?= htmlspecialchars($user['department'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg" placeholder="607">
+                                <input name="department" value="24124" class="w-full px-4 py-2 border rounded-lg" placeholder="607">
                             </div>
                         </div>
 
                         <div class="mt-4 flex items-center space-x-6">
                             <div>
-                                <?php
-                                // Определяем источник аватара
-                                if (!empty($_FILES['avatar']['tmp_name'])) {
-                                    // Превью загруженного файла при ошибке формы
-                                    $avatar_src = 'data:' . mime_content_type($_FILES['avatar']['tmp_name']) . ';base64,' .
-                                        base64_encode(file_get_contents($_FILES['avatar']['tmp_name']));
-                                } elseif (!empty($user['student_id']) && !empty($user['avatar'])) {
-                                    // Аватар из базы
-                                    $avatar_src = "get_avatar.php?id=" . $user['student_id'] . "&t=" . time();
-                                } else {
-                                    // Плейсхолдер
-                                    $avatar_src = "https://placehold.co/120x120/0055A4/FFFFFF?text=Аватар";
-                                }
-                                ?>
-                                <img id="avatarPreview" src="<?= $avatar_src ?>" data-original="<?= $avatar_src ?>" class="avatar-preview" alt="Аватар">
+                                                                <img id="avatarPreview" src="https://placehold.co/120x120/0055A4/FFFFFF?text=Аватар" data-original="https://placehold.co/120x120/0055A4/FFFFFF?text=Аватар" class="avatar-preview" alt="Аватар">
                                 <input id="avatarUpload" type="file" name="avatar" accept="image/*">
                             </div>
                         </div>
@@ -667,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <h2 class="text-xl font-bold text-mai-blue mb-4">Шаг 2 — Кто я сейчас</h2>
                         <div>
                             <label class="text-sm">О себе</label>
-                            <textarea name="about" rows="3" placeholder="Например: Я студент 2 курса, увлекаюсь программированием..." class="w-full px-4 py-2 border rounded-lg"><?= htmlspecialchars($user['about'] ?? '') ?></textarea>
+                            <textarea name="about" rows="3" placeholder="Например: Я студент 2 курса, увлекаюсь программированием..." class="w-full px-4 py-2 border rounded-lg">О себеШаг 2 — Кто я сейчас</textarea>
                         </div>
 
                         <div class="mt-4">
@@ -683,48 +336,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                             <div>
                                 <label class="text-sm">Увлечения</label>
-                                <input name="hobbies" placeholder="Например: играю на гитаре, занимаюсь спортом..." value="<?= htmlspecialchars($user['hobbies'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg">
+                                <input name="hobbies" placeholder="Например: играю на гитаре, занимаюсь спортом..." value="Спорт, кодинг, 21" class="w-full px-4 py-2 border rounded-lg">
                             </div>
                             <div>
                                 <label class="text-sm">Софт-скиллы</label>
-                                <input name="soft_skills" value="<?= htmlspecialchars($user['soft_skills'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg">
+                                <input name="soft_skills" value="  Спорт, кодинг, 21 Софт-скиллы" class="w-full px-4 py-2 border rounded-lg">
                             </div>
                         </div>
 
-                        <?php
-                        // Список слабых сторон
-                        $weaknesses = ['лентяй', 'перфекционист', 'прокрастинатор', 'неуверен в себе', 'другое'];
-
-                        // Если в БД пусто -> поставить по умолчанию "лентяй"
-                        $current = trim($user['weakness'] ?? '');
-                        if ($current === '') {
-                            $current = 'лентяй';
-                        }
-
-                        $isOther = !in_array($current, $weaknesses);
-                        ?>
-                        <div class="mt-4">
+                                                <div class="mt-4">
                             <label class="text-sm">Слабая сторона</label>
                             <div class="flex flex-wrap gap-3 mt-2">
-                                <?php foreach ($weaknesses as $w): ?>
-                                    <label class="inline-flex items-center">
-                                        <input type="radio" name="weakness" value="<?= $w ?>"
-                                            <?php if ($w === 'другое' && $isOther): ?>
-                                            checked
-                                            <?php elseif ($current === $w): ?>
-                                            checked
-                                            <?php endif; ?>
-                                            class="form-radio weakness-radio">
-                                        <span class="ml-2"><?= $w ?></span>
+                                                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="weakness" value="лентяй"
+                                                                                        class="form-radio weakness-radio">
+                                        <span class="ml-2">лентяй</span>
                                     </label>
-                                <?php endforeach; ?>
-                            </div>
+                                                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="weakness" value="перфекционист"
+                                                                                        class="form-radio weakness-radio">
+                                        <span class="ml-2">перфекционист</span>
+                                    </label>
+                                                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="weakness" value="прокрастинатор"
+                                                                                        class="form-radio weakness-radio">
+                                        <span class="ml-2">прокрастинатор</span>
+                                    </label>
+                                                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="weakness" value="неуверен в себе"
+                                                                                        class="form-radio weakness-radio">
+                                        <span class="ml-2">неуверен в себе</span>
+                                    </label>
+                                                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="weakness" value="другое"
+                                                                                        checked
+                                                                                        class="form-radio weakness-radio">
+                                        <span class="ml-2">другое</span>
+                                    </label>
+                                                            </div>
 
                             <input id="weakness_other" type="text" name="weakness_other"
-                                class="mt-2 w-full px-4 py-2 border rounded-lg <?= $isOther ? '' : 'hidden' ?>"
+                                class="mt-2 w-full px-4 py-2 border rounded-lg "
                                 placeholder="Если другое..."
-                                value="<?= $isOther ? htmlspecialchars($current) : '' ?>"
-                                <?= $isOther ? '' : 'disabled' ?>>
+                                value="Что-то другие"
+                                >
                         </div>
 
                         <div class="mt-6 flex justify-between">
@@ -747,7 +402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </span>
                             </label>
                             <!-- Пояснения с основной страницы убраны (текст перемещён в тултип). -->
-                            <textarea id="smartGoal" placeholder="Например: повысить средний балл до 4.5 к концу семестра..." name="smart_goal" maxlength="200" rows="3" class="w-full px-4 py-2 border rounded-lg"><?= htmlspecialchars($user['smart_goal'] ?? '') ?></textarea>
+                            <textarea id="smartGoal" placeholder="Например: повысить средний балл до 4.5 к концу семестра..." name="smart_goal" maxlength="200" rows="3" class="w-full px-4 py-2 border rounded-lg">Шаг 3 — Цель на семестр SMART-цель (до 200 символов)</textarea>
                             <div class="text-right text-xs text-gray-500 mt-1"><span id="goalCount">0</span>/200</div>
                         </div>
 
@@ -773,7 +428,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <span class="tooltip-content">Срок выполнения — конкретный дедлайн (дата), к которому планируете достичь SMART-цели.</span>
                                 </span>
                             </label>
-                            <input type="date" name="deadline" value="<?= htmlspecialchars($user['deadline'] ?? '') ?>" class="w-full px-4 py-2 border rounded-lg">
+                            <input type="date" name="deadline" value="" class="w-full px-4 py-2 border rounded-lg">
                         </div>
 
                         <div class="mt-6 flex justify-between">
@@ -849,19 +504,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="space-y-4">
                             <div>
                                 <label class="text-sm">Что получилось хорошо?</label>
-                                <textarea name="reflections[0][what_worked]" placeholder="Например: отлично выступил в командном проекте..." rows="3" class="w-full px-4 py-2 border rounded-lg"><?= $reflections[0]['what_worked'] ?? '' ?></textarea>
+                                <textarea name="reflections[0][what_worked]" placeholder="Например: отлично выступил в командном проекте..." rows="3" class="w-full px-4 py-2 border rounded-lg"></textarea>
                             </div>
                             <div>
                                 <label class="text-sm">Что не получилось?</label>
-                                <textarea name="reflections[0][what_failed]" placeholder="Например: не успел вовремя сдать лабораторные..." rows="3" class="w-full px-4 py-2 border rounded-lg"><?= $reflections[0]['what_failed'] ?? '' ?></textarea>
+                                <textarea name="reflections[0][what_failed]" placeholder="Например: не успел вовремя сдать лабораторные..." rows="3" class="w-full px-4 py-2 border rounded-lg"></textarea>
                             </div>
                             <div>
                                 <label class="text-sm">Что изменю в следующем семестре?</label>
-                                <textarea name="reflections[0][changes]" placeholder="Например: составлю расписание и буду придерживаться дедлайнов..." rows="3" class="w-full px-4 py-2 border rounded-lg"><?= $reflections[0]['changes'] ?? '' ?></textarea>
+                                <textarea name="reflections[0][changes]" placeholder="Например: составлю расписание и буду придерживаться дедлайнов..." rows="3" class="w-full px-4 py-2 border rounded-lg"></textarea>
                             </div>
 
                             <div class="flex items-center space-x-3 mt-2">
-                                <input type="checkbox" id="is_published" name="is_published" <?= ($user['is_published'] ?? 0) ? 'checked' : '' ?> class="h-5 w-5">
+                                <input type="checkbox" id="is_published" name="is_published"  class="h-5 w-5">
                                 <label for="is_published" class="font-bold">Опубликовать стенд в галерее</label>
                             </div>
                         </div>
@@ -1312,15 +967,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Load server data
-            <?php if ($user): ?>
-                const serverData = {
-                    skills: <?= json_encode($skills ?? []) ?>,
-                    competencies: <?= json_encode($competencies ?? []) ?>,
-                    projects: <?= json_encode($projects ?? []) ?>,
-                    criteria: <?= json_encode(array_column($criteria ?? [], 'criterion')) ?>,
-                    terrell_points: <?= json_encode($progress ?? []) ?>,
-                    reflections: <?= json_encode($reflections ?? []) ?>
-                };
+                            const serverData = {
+                    skills: [{"id":"38","student_id":"8","name":"C#","level":"2"}],
+                    competencies: [],
+                    projects: [],
+                    criteria: ["\u044621"],
+                    terrell_points: [],
+                    reflections: []                };
 
                 if (serverData.skills) {
                     serverData.skills.forEach(s => skillsList.appendChild(createSkillRow(s.name, s.level)));
@@ -1359,8 +1012,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (input2) input2.value = r.what_failed || '';
                     if (input3) input3.value = r.changes || '';
                 }
-            <?php endif; ?>
-
+            
             // Инициализация шагов и индикаторов
             updateStepsConfig();
             showStep(0);
