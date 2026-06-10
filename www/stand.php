@@ -176,6 +176,7 @@ $userComments = $commentsStmt->fetchAll(PDO::FETCH_ASSOC);
     <title><?= htmlspecialchars($student['login']) ?> — Трек МАИ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
     <style>
@@ -455,6 +456,19 @@ $userComments = $commentsStmt->fetchAll(PDO::FETCH_ASSOC);
                     <?= htmlspecialchars($student['group_number']) ?> • <?= htmlspecialchars($student['semester']) ?> семестр •
                     Кафедра <?= htmlspecialchars($student['department']) ?>
                 </p>
+                <div class="mt-5 flex justify-center gap-3">
+                    <?php if (!empty($student['github_username'])): ?>
+                        <a href="https://github.com/<?= htmlspecialchars($student['github_username']) ?>" target="_blank" class="inline-flex items-center text-white bg-slate-900/80 hover:bg-slate-900 border border-slate-700/50 px-5 py-2.5 rounded-2xl text-base font-bold transition duration-200 gap-2 shadow-lg shadow-black/10 no-print">
+                            <i class="fa-brands fa-github text-xl"></i>
+                            <span>GitHub: @<?= htmlspecialchars($student['github_username']) ?></span>
+                        </a>
+                    <?php else: ?>
+                        <span class="inline-flex items-center text-white/40 bg-slate-800/30 border border-slate-700/20 px-5 py-2.5 rounded-2xl text-base font-bold cursor-not-allowed gap-2 no-print" title="GitHub не подключен">
+                            <i class="fa-brands fa-github text-xl"></i>
+                            <span>GitHub не подключен</span>
+                        </span>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <!-- Контент -->

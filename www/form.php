@@ -815,6 +815,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="max-w-5xl mx-auto">
                         <h2 class="text-xl font-bold text-mai-blue mb-4">Шаг — Компетенции и проекты</h2>
 
+                        <!-- Интеграция с GitHub -->
+                        <div class="mb-8 p-6 bg-slate-50 border border-slate-200 rounded-2xl">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-12 h-12 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center text-2xl shadow-inner">
+                                        <i class="fa-brands fa-github"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-extrabold text-slate-800 tracking-tight">Интеграция с GitHub</h3>
+                                        <p class="text-xs text-slate-500 font-medium">Автоматический импорт ваших проектов из GitHub репозиториев</p>
+                                    </div>
+                                </div>
+
+                                <div id="github-connection-container">
+                                    <!-- Будет заполнено через JS -->
+                                </div>
+                            </div>
+
+                            <!-- Контейнер для списка репозиториев (показывается после авторизации) -->
+                            <div id="github-repos-container" class="hidden mt-6 pt-6 border-t border-slate-200">
+                                <label class="block text-sm font-bold text-slate-700 mb-2">Выберите репозитории для импорта:</label>
+                                <div id="github-repos-list" class="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-3 bg-white mb-4">
+                                    <!-- Заполняется JS -->
+                                </div>
+                                <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
+                                    <span class="text-xs text-slate-500 font-semibold" id="github-selected-count">Выбрано проектов: 0</span>
+                                    <button type="button" id="github-import-btn" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl font-bold transition duration-200 text-sm shadow-md shadow-green-100 flex items-center">
+                                        <i class="fa-solid fa-file-import mr-2"></i> Экспортировать выбранные проекты из GitHub
+                                    </button>
+                                </div>
+                                <div id="github-import-loader" class="hidden mt-3 flex items-center text-sm text-indigo-600 font-bold">
+                                    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Загрузка и анализ репозиториев...
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mb-6">
                             <div class="flex justify-between items-center">
                                 <h3 class="font-semibold">Компетенции</h3>
@@ -961,21 +997,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
 
             if (hasInProgress) {
-                stepsConfig = [
-                    { id: 'step-basic', title: 'Основные' },
-                    { id: 'step-whoami', title: 'Кто я' },
-                    { id: 'step-goal', title: 'Цель' },
-                    { id: 'step-competencies', title: 'Компетенции' },
-                    { id: 'step-progress', title: 'Прогресс' },
-                    { id: 'step-reflection', title: 'Рефлексия' }
+                stepsConfig = [{
+                        id: 'step-basic',
+                        title: 'Основные'
+                    },
+                    {
+                        id: 'step-whoami',
+                        title: 'Кто я'
+                    },
+                    {
+                        id: 'step-goal',
+                        title: 'Цель'
+                    },
+                    {
+                        id: 'step-competencies',
+                        title: 'Компетенции'
+                    },
+                    {
+                        id: 'step-progress',
+                        title: 'Прогресс'
+                    },
+                    {
+                        id: 'step-reflection',
+                        title: 'Рефлексия'
+                    }
                 ];
             } else {
-                stepsConfig = [
-                    { id: 'step-basic', title: 'Основные' },
-                    { id: 'step-whoami', title: 'Кто я' },
-                    { id: 'step-goal', title: 'Цель' },
-                    { id: 'step-competencies', title: 'Компетенции' },
-                    { id: 'step-reflection', title: 'Рефлексия' }
+                stepsConfig = [{
+                        id: 'step-basic',
+                        title: 'Основные'
+                    },
+                    {
+                        id: 'step-whoami',
+                        title: 'Кто я'
+                    },
+                    {
+                        id: 'step-goal',
+                        title: 'Цель'
+                    },
+                    {
+                        id: 'step-competencies',
+                        title: 'Компетенции'
+                    },
+                    {
+                        id: 'step-reflection',
+                        title: 'Рефлексия'
+                    }
                 ];
             }
         }
@@ -1217,7 +1284,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const comment = prompt("Комментарий (опционально):")?.trim() || '';
             const progressMap = document.getElementById('terrellMap');
             if (progressMap) {
-                const newPoint = createProgressPoint({ type, name, comment });
+                const newPoint = createProgressPoint({
+                    type,
+                    name,
+                    comment
+                });
                 progressMap.appendChild(newPoint);
                 updatePositions(progressMap);
             }
@@ -1302,11 +1373,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (s.value === 'в процессе') hasInProgress = true;
                 });
                 const defaultStatus = hasInProgress ? 'завершен' : 'в процессе';
-                projList.appendChild(createProjectCard({ status: defaultStatus }));
+                projList.appendChild(createProjectCard({
+                    status: defaultStatus
+                }));
                 refreshSteps();
             });
             $('#addCriterionBtn').addEventListener('click', () => criteriaList.appendChild(createCriterionRow()));
-            
+
             if (progressMap) {
                 enableProgressDragAndDrop(progressMap);
             }
@@ -1430,6 +1503,225 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             updateOtherVisibility();
+
+            // === Интеграция с GitHub (JS Логика) ===
+            let githubUsername = <?php
+                                    $githubUser = $user['github_username'] ?? '';
+                                    echo json_encode($githubUser, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT);
+                                    ?>;
+
+            function updateGithubUI() {
+                const connContainer = document.getElementById('github-connection-container');
+                const reposContainer = document.getElementById('github-repos-container');
+
+                if (githubUsername) {
+                    connContainer.innerHTML = `
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-sm font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg flex items-center">
+                                <span class="w-1.5 h-1.5 rounded-full bg-green-500 mr-2"></span>
+                                Подключен: @${escapeHtml(githubUsername)}
+                            </span>
+                            <button type="button" id="github-show-repos-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition duration-200">
+                                <i class="fa-solid fa-list-check mr-1.5"></i> Показать репозитории
+                            </button>
+                            <button type="button" id="github-disconnect-btn" class="text-red-500 hover:text-red-700 text-xs font-bold hover:underline px-2">
+                                Отключить
+                            </button>
+                        </div>
+                    `;
+
+                    document.getElementById('github-show-repos-btn').addEventListener('click', loadGithubRepos);
+                    document.getElementById('github-disconnect-btn').addEventListener('click', disconnectGithub);
+                } else {
+                    connContainer.innerHTML = `
+                        <div class="relative inline-block group">
+                            <button type="button" id="github-connect-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold transition duration-200 flex items-center shadow-md shadow-indigo-100">
+                                <i class="fa-brands fa-github mr-2 text-lg"></i> Авторизоваться в GitHub
+                            </button>
+                            <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-800 text-white text-xs rounded-lg p-2 shadow-lg z-50 text-center">
+                                Авторизовавшись в GitHub, вы сможете выбрать свои публичные проекты и автоматически добавить их в стенд
+                                <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+                            </div>
+                        </div>
+                    `;
+
+                    document.getElementById('github-connect-btn').addEventListener('click', startGithubAuth);
+                    reposContainer.classList.add('hidden');
+                }
+            }
+
+            function startGithubAuth() {
+                fetch('api/auth/github/url.php', {
+                        method: 'POST'
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success && data.url) {
+                            const width = 600,
+                                height = 700;
+                            const left = (window.innerWidth - width) / 2 + window.screenX;
+                            const top = (window.innerHeight - height) / 2 + window.screenY;
+                            const popup = window.open(data.url, 'github_oauth', `width=${width},height=${height},left=${left},top=${top}`);
+
+                            window.addEventListener('message', function receiveMessage(event) {
+                                if (event.data && event.data.type === 'github_auth_success') {
+                                    window.removeEventListener('message', receiveMessage);
+                                    githubUsername = event.data.username;
+                                    updateGithubUI();
+                                    loadGithubRepos();
+                                } else if (event.data && event.data.type === 'github_auth_error') {
+                                    window.removeEventListener('message', receiveMessage);
+                                    alert('Ошибка авторизации: ' + event.data.message);
+                                }
+                            });
+                        } else {
+                            alert('Ошибка: ' + (data.message || 'Не удалось получить ссылку авторизации'));
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert('Сетевая ошибка при получении ссылки авторизации');
+                    });
+            }
+
+            function loadGithubRepos() {
+                const reposContainer = document.getElementById('github-repos-container');
+                const reposList = document.getElementById('github-repos-list');
+                reposContainer.classList.remove('hidden');
+                reposList.innerHTML = '<div class="text-sm text-slate-500 p-2"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Загрузка списка репозиториев...</div>';
+
+                fetch('api/github/repos.php')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            if (data.repos.length === 0) {
+                                reposList.innerHTML = '<div class="text-sm text-slate-500 p-2">У вас нет публичных репозиториев.</div>';
+                                return;
+                            }
+
+                            reposList.innerHTML = data.repos.map((repo, i) => `
+                                <label class="flex items-start gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition">
+                                    <input type="checkbox" name="github_selected_repos[]" value="${escapeHtml(repo.full_name)}" class="mt-1 github-repo-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                    <div class="text-xs">
+                                        <div class="font-bold text-slate-800">${escapeHtml(repo.name)}</div>
+                                        <div class="text-slate-500 mt-0.5">${escapeHtml(repo.description || 'Без описания')}</div>
+                                        <div class="text-slate-400 mt-0.5 font-mono">${escapeHtml(repo.language || 'Не определен')} • <a href="${escapeHtml(repo.html_url)}" target="_blank" class="text-indigo-500 hover:underline">Ссылка <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i></a></div>
+                                    </div>
+                                </label>
+                            `).join('');
+
+                            // Привязываем слушатели к чекбоксам
+                            document.querySelectorAll('.github-repo-checkbox').forEach(cb => {
+                                cb.addEventListener('change', updateSelectedReposCount);
+                            });
+
+                            updateSelectedReposCount();
+                        } else {
+                            if (data.error === 'TOKEN_EXPIRED') {
+                                githubUsername = '';
+                                updateGithubUI();
+                                alert('Сессия GitHub истекла. Пожалуйста, авторизуйтесь заново.');
+                            } else {
+                                reposList.innerHTML = `<div class="text-sm text-red-500 p-2">Ошибка: ${escapeHtml(data.message || 'Не удалось загрузить список')}</div>`;
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        reposList.innerHTML = '<div class="text-sm text-red-500 p-2">Сетевая ошибка при загрузке репозиториев</div>';
+                    });
+            }
+
+            function updateSelectedReposCount() {
+                const checked = document.querySelectorAll('.github-repo-checkbox:checked').length;
+                document.getElementById('github-selected-count').textContent = `Выбрано проектов: ${checked}`;
+            }
+
+            function disconnectGithub() {
+                if (!confirm('Вы уверены, что хотите отключить интеграцию с GitHub?')) return;
+
+                fetch('api/auth/github/disconnect.php', {
+                        method: 'POST'
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            githubUsername = '';
+                            updateGithubUI();
+                        } else {
+                            alert('Ошибка: ' + (data.message || 'Не удалось отключить аккаунт'));
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert('Сетевая ошибка при отключении');
+                    });
+            }
+
+            document.getElementById('github-import-btn').addEventListener('click', () => {
+                const checkedBoxes = document.querySelectorAll('.github-repo-checkbox:checked');
+                if (checkedBoxes.length === 0) {
+                    alert('Пожалуйста, выберите хотя бы один репозиторий.');
+                    return;
+                }
+
+                const repos = Array.from(checkedBoxes).map(cb => cb.value);
+                const loader = document.getElementById('github-import-loader');
+                const importBtn = document.getElementById('github-import-btn');
+
+                loader.classList.remove('hidden');
+                importBtn.disabled = true;
+                importBtn.classList.add('opacity-50');
+
+                fetch('api/github/import.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            repos
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        loader.classList.add('hidden');
+                        importBtn.disabled = false;
+                        importBtn.classList.remove('opacity-50');
+
+                        if (data.success && data.projects) {
+                            const projList = document.getElementById('projectsList');
+                            let unparsedStackCount = 0;
+
+                            data.projects.forEach(p => {
+                                projList.appendChild(createProjectCard(p));
+                                if (p.stack_not_recognized) {
+                                    unparsedStackCount++;
+                                }
+                            });
+
+                            checkedBoxes.forEach(cb => cb.checked = false);
+                            updateSelectedReposCount();
+                            refreshSteps();
+
+                            if (unparsedStackCount > 0) {
+                                alert(`Импортировано проектов: ${data.projects.length}. В ${unparsedStackCount} проектах стек не распознан автоматически, заполните его вручную.`);
+                            } else {
+                                alert(`Успешно импортировано проектов: ${data.projects.length}`);
+                            }
+                        } else {
+                            alert('Ошибка импорта: ' + (data.message || 'Неизвестная ошибка'));
+                        }
+                    })
+                    .catch(err => {
+                        loader.classList.add('hidden');
+                        importBtn.disabled = false;
+                        importBtn.classList.remove('opacity-50');
+                        console.error(err);
+                        alert('Сетевая ошибка при импорте проектов');
+                    });
+            });
+
+            updateGithubUI();
         });
     </script>
 </body>

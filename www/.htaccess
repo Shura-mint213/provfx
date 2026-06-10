@@ -1,4 +1,4 @@
-# Запрещаем доступ к файлам вне public_html
+# Запрещаем доступ к файлам вне www
 <Files ~ "(config\.php|init\.php)">
     Order allow,deny
     Deny from all

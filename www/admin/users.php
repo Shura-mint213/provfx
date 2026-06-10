@@ -108,6 +108,7 @@ $totalAdmins = count(array_filter($allUsers, fn($u) => $u['role'] === 'admin'));
             <div class="flex items-center space-x-4">
                 <span class="text-sm opacity-85">Привет, <strong class="font-semibold"><?= htmlspecialchars($currentUser['login']) ?></strong></span>
                 <a href="../gallery.php" class="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200"><i class="fa-solid fa-images mr-2"></i>Галерея</a>
+                <a href="export.php" class="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition duration-200"><i class="fa-solid fa-file-export mr-2"></i>Экспорт</a>
                 <a href="../logout.php" class="text-white/80 hover:text-white text-sm hover:underline">Выйти</a>
             </div>
         </div>

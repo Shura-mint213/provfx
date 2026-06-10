@@ -1,5 +1,5 @@
 const fs = require('fs');
-const html = fs.readFileSync('public_html/scratch_output.html', 'utf8');
+const html = fs.readFileSync('www/scratch_output.html', 'utf8');
 
 const matches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 const jsCode = matches[matches.length - 1][1];

@@ -141,44 +141,19 @@ $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <!-- Панель администратора (Выгрузка данных) -->
             <div class="bg-white rounded-2xl shadow-md p-6 mb-8 border border-indigo-50/80 bg-gradient-to-r from-white via-indigo-50/10 to-white flex flex-col md:flex-row justify-between items-center gap-4 hover:shadow-lg transition duration-300">
                 <div class="flex items-center space-x-4">
-                    <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl shadow-inner"><i class="fa-solid fa-download"></i></div>
+                    <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl shadow-inner">
+                        <i class="fa-solid fa-download"></i>
+                    </div>
                     <div>
                         <h3 class="font-extrabold text-slate-800 tracking-tight">Экспорт данных системы</h3>
-                        <p class="text-xs text-slate-500 font-medium">Административный инструмент выгрузки данных БД (без конфиденциальных сведений)</p>
+                        <p class="text-xs text-slate-500 font-medium">Административный инструмент выгрузки данных БД</p>
                     </div>
                 </div>
-                
-                <div class="relative inline-block text-left">
-                    <button id="exportDropdownBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold transition duration-200 flex items-center shadow-md shadow-indigo-100">
-                        <i class="fa-solid fa-file-export mr-2"></i> Выгрузить данные из БД <i class="fa-solid fa-chevron-down ml-2 text-xs"></i>
-                    </button>
-                    <div id="exportMenu" class="hidden absolute right-0 mt-2 w-48 bg-white shadow-xl rounded-xl z-50 overflow-hidden border border-slate-100 text-sm">
-                        <a href="admin/export.php?format=xlsx" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-excel text-emerald-600 mr-2.5"></i> Формат XLSX</a>
-                        <a href="admin/export.php?format=xls" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-excel text-teal-600 mr-2.5"></i> Формат XLS</a>
-                        <a href="admin/export.php?format=csv" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-csv text-blue-600 mr-2.5"></i> Формат CSV</a>
-                        <a href="admin/export.php?format=json" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-code text-amber-600 mr-2.5"></i> Формат JSON</a>
-                        <a href="admin/export.php?format=xml" class="block px-4 py-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition duration-150"><i class="fa-solid fa-file-code text-orange-600 mr-2.5"></i> Формат XML</a>
-                    </div>
-                </div>
+
+                <a href="admin/export.php" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold transition duration-200 flex items-center shadow-md shadow-indigo-100">
+                    <i class="fa-solid fa-file-export mr-2"></i> Выгрузить данные из БД
+                </a>
             </div>
-            
-            <script>
-                (function() {
-                    const btn = document.getElementById('exportDropdownBtn');
-                    const menu = document.getElementById('exportMenu');
-                    if (btn && menu) {
-                        btn.addEventListener('click', e => {
-                            e.stopPropagation();
-                            menu.classList.toggle('hidden');
-                        });
-                        document.addEventListener('click', e => {
-                            if (!btn.contains(e.target) && !menu.contains(e.target)) {
-                                menu.classList.add('hidden');
-                            }
-                        });
-                    }
-                })();
-            </script>
         <?php endif; ?>
 
         <!-- Поиск -->

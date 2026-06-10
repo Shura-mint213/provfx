@@ -1,7 +1,9 @@
 <?php
 // init.php — общий файл инициализации
 
-define('IN_APP', true);
+if (!defined('IN_APP')) {
+    define('IN_APP', true);
+}
 
 // Грузим config.php ВСЕГДА
 require_once __DIR__ . '/config.php';

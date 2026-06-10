@@ -106,7 +106,7 @@ $blockedUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 fetch('/block_user.php', {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
+                            'Content-Type': 'application/x-mai-tracker-form-urlencoded'
                         },
                         body: `action=unblock&blocked_id=${id}`
                     })
