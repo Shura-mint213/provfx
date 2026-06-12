@@ -11,8 +11,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 try {
-    delete_user_integration($_SESSION['user_id'], 'github');
-    
+    delete_user_integration($_SESSION['user_id'], 'gitlab');
     echo json_encode(['success' => true]);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => 'DATABASE_ERROR', 'message' => 'Ошибка базы данных: ' . $e->getMessage()]);

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../init.php';
 require_once __DIR__ . '/../check_auth.php';
+require_once __DIR__ . '/api/oauth_helper.php';
 
 $id = (int)($_GET['id'] ?? 0);
 if (!$id) die('Студент не найден');
@@ -10,6 +11,10 @@ $stmt = $pdo->prepare("SELECT * FROM students WHERE student_id = ? AND is_publis
 $stmt->execute([$id]);
 $student = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$student) die('Стенд не опубликован или удалён');
+
+// Загружаем интеграции для студента
+$githubIntegration = get_user_integration($id, 'github');
+$gitlabIntegration = get_user_integration($id, 'gitlab');
 
 // Определяем кто просматривает стенд
 $viewerId = $_SESSION['user_id'] ?? null;
@@ -456,16 +461,28 @@ $userComments = $commentsStmt->fetchAll(PDO::FETCH_ASSOC);
                     <?= htmlspecialchars($student['group_number']) ?> • <?= htmlspecialchars($student['semester']) ?> семестр •
                     Кафедра <?= htmlspecialchars($student['department']) ?>
                 </p>
-                <div class="mt-5 flex justify-center gap-3">
-                    <?php if (!empty($student['github_username'])): ?>
-                        <a href="https://github.com/<?= htmlspecialchars($student['github_username']) ?>" target="_blank" class="inline-flex items-center text-white bg-slate-900/80 hover:bg-slate-900 border border-slate-700/50 px-5 py-2.5 rounded-2xl text-base font-bold transition duration-200 gap-2 shadow-lg shadow-black/10 no-print">
+                <div class="mt-5 flex flex-wrap justify-center gap-3">
+                    <?php if ($githubIntegration): ?>
+                        <a href="https://github.com/<?= htmlspecialchars($githubIntegration['username']) ?>" target="_blank" class="inline-flex items-center text-white bg-slate-900/80 hover:bg-slate-900 border border-slate-700/50 px-5 py-2.5 rounded-2xl text-base font-bold transition duration-200 gap-2 shadow-lg shadow-black/10 no-print">
                             <i class="fa-brands fa-github text-xl"></i>
-                            <span>GitHub: @<?= htmlspecialchars($student['github_username']) ?></span>
+                            <span>GitHub: @<?= htmlspecialchars($githubIntegration['username']) ?></span>
                         </a>
                     <?php else: ?>
                         <span class="inline-flex items-center text-white/40 bg-slate-800/30 border border-slate-700/20 px-5 py-2.5 rounded-2xl text-base font-bold cursor-not-allowed gap-2 no-print" title="GitHub не подключен">
                             <i class="fa-brands fa-github text-xl"></i>
                             <span>GitHub не подключен</span>
+                        </span>
+                    <?php endif; ?>
+
+                    <?php if ($gitlabIntegration): ?>
+                        <a href="<?= !empty($gitlabIntegration['profile_url']) ? htmlspecialchars($gitlabIntegration['profile_url']) : 'https://gitlab.com/' . htmlspecialchars($gitlabIntegration['username']) ?>" target="_blank" class="inline-flex items-center text-white bg-orange-600/80 hover:bg-orange-600 border border-orange-500/50 px-5 py-2.5 rounded-2xl text-base font-bold transition duration-200 gap-2 shadow-lg shadow-black/10 no-print">
+                            <i class="fa-brands fa-gitlab text-xl"></i>
+                            <span>GitLab: @<?= htmlspecialchars($gitlabIntegration['username']) ?></span>
+                        </a>
+                    <?php else: ?>
+                        <span class="inline-flex items-center text-white/40 bg-slate-800/30 border border-slate-700/20 px-5 py-2.5 rounded-2xl text-base font-bold cursor-not-allowed gap-2 no-print" title="GitLab не подключен">
+                            <i class="fa-brands fa-gitlab text-xl"></i>
+                            <span>GitLab не подключен</span>
                         </span>
                     <?php endif; ?>
                 </div>

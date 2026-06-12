@@ -12,13 +12,13 @@ require_once __DIR__ . '/../../oauth_helper.php';
 <html lang="ru">
 <head>
     <meta charset="utf-8">
-    <title>GitHub Авторизация</title>
+    <title>GitLab Авторизация</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 flex items-center justify-center min-h-screen text-slate-800 font-sans">
     <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border border-slate-100">
         <div id="loader" class="flex flex-col items-center">
-            <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <div class="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4"></div>
             <h1 class="text-lg font-bold">Завершение авторизации...</h1>
             <p class="text-xs text-slate-500 mt-1">Пожалуйста, подождите, мы настраиваем интеграцию.</p>
         </div>
@@ -53,7 +53,7 @@ function outputError($msg) {
         document.getElementById('status-title').textContent = 'Ошибка авторизации';
         document.getElementById('status-desc').textContent = " . json_encode($msg) . ";
         
-        sendResult({ type: 'github_auth_error', message: " . json_encode($msg) . " });
+        sendResult({ type: 'gitlab_auth_error', message: " . json_encode($msg) . " });
     </script>
     </body>
     </html>
@@ -69,12 +69,12 @@ function outputSuccess($username) {
         document.getElementById('loader').classList.add('hidden');
         const res = document.getElementById('result');
         res.classList.remove('hidden');
-        document.getElementById('status-icon').innerHTML = '✅';
-        document.getElementById('status-icon').classList.add('text-green-500');
+        document.getElementById('status-icon').innerHTML = '🦊';
+        document.getElementById('status-icon').classList.add('text-orange-500');
         document.getElementById('status-title').textContent = 'Успешно подключено';
-        document.getElementById('status-desc').textContent = 'Аккаунт @' + {$escapedUsername} + ' подключен.';
+        document.getElementById('status-desc').textContent = 'Аккаунт GitLab @' + {$escapedUsername} + ' подключен.';
         
-        sendResult({ type: 'github_auth_success', username: {$escapedUsername} });
+        sendResult({ type: 'gitlab_auth_success', username: {$escapedUsername} });
     </script>
     </body>
     </html>
@@ -88,8 +88,8 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $state = $_GET['state'] ?? '';
-$savedState = $_SESSION['github_oauth_state'] ?? '';
-unset($_SESSION['github_oauth_state']);
+$savedState = $_SESSION['gitlab_oauth_state'] ?? '';
+unset($_SESSION['gitlab_oauth_state']);
 
 if (empty($state) || $state !== $savedState) {
     outputError("Ошибка проверки безопасности (неверное состояние CSRF).");
@@ -101,72 +101,74 @@ if (empty($code)) {
     outputError($errorDesc);
 }
 
-// Обмениваем code на токен доступа
-$tokenUrl = "https://github.com/login/oauth/access_token";
+// Обмениваем code на токен доступа в GitLab
+$tokenUrl = "https://gitlab.com/oauth/token";
 $postFields = [
-    'client_id'     => GITHUB_CLIENT_ID,
-    'client_secret' => GITHUB_CLIENT_SECRET,
+    'client_id'     => GITLAB_CLIENT_ID,
+    'client_secret' => GITLAB_CLIENT_SECRET,
     'code'          => $code,
-    'redirect_uri'  => GITHUB_REDIRECT_URI
+    'grant_type'    => 'authorization_code',
+    'redirect_uri'  => GITLAB_REDIRECT_URI
 ];
 
-
-$res = makeGithubApiRequest(null, $tokenUrl, 'POST', $postFields);
+$res = makeGitlabApiRequest(null, $tokenUrl, 'POST', $postFields);
 
 if ($res['code'] !== 200) {
-    outputError("Не удалось связаться с сервером GitHub (HTTP {$res['code']}).");
+    outputError("Не удалось связаться с сервером GitLab (HTTP {$res['code']}).");
 }
 
-$tokenData = [];
-if (strpos($res['body'], '{') === 0) {
-    $tokenData = json_decode($res['body'], true);
-} else {
-    parse_str($res['body'], $tokenData);
-}
+$tokenData = json_decode($res['body'], true);
 
 $accessToken = $tokenData['access_token'] ?? '';
+$refreshToken = $tokenData['refresh_token'] ?? null;
+$expiresIn = $tokenData['expires_in'] ?? null;
+$expiresAt = null;
+if ($expiresIn) {
+    $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
+}
+
 if (empty($accessToken)) {
     $errorMsg = $tokenData['error_description'] ?? $tokenData['error'] ?? 'Не удалось получить токен доступа.';
     outputError($errorMsg);
 }
 
-// Получаем имя пользователя
-$userUrl = "https://api.github.com/user";
-$userRes = makeGithubApiRequest($accessToken, $userUrl);
+// Получаем имя пользователя из GitLab API
+$userUrl = GITLAB_API_URL . "/user";
+$userRes = makeGitlabApiRequest($accessToken, $userUrl);
 
 if ($userRes['code'] !== 200) {
-    outputError("Не удалось получить данные профиля GitHub (HTTP {$userRes['code']}).");
+    outputError("Не удалось получить данные профиля GitLab (HTTP {$userRes['code']}).");
 }
 
 $userData = json_decode($userRes['body'], true);
-$githubUsername = $userData['login'] ?? '';
+$gitlabUsername = $userData['username'] ?? '';
 
-if (empty($githubUsername)) {
-    outputError("Не удалось определить логин GitHub.");
+if (empty($gitlabUsername)) {
+    outputError("Не удалось определить логин GitLab.");
 }
 
-// Сохраняем имя пользователя и зашифрованный токен в БД
+// Сохраняем данные в БД
 try {
-    $avatarUrl = $userData['avatar_url'] ?? null;
-    $profileUrl = $userData['html_url'] ?? null;
-    $email = $userData['email'] ?? null;
     $platformUserId = $userData['id'] ?? null;
-
+    $email = $userData['email'] ?? null;
+    $avatarUrl = $userData['avatar_url'] ?? null;
+    $profileUrl = $userData['web_url'] ?? null;
+    
     save_user_integration(
         $_SESSION['user_id'],
-        'github',
+        'gitlab',
         $platformUserId,
-        $githubUsername,
+        $gitlabUsername,
         $email,
         $accessToken,
-        null,
-        null,
+        $refreshToken,
+        $expiresAt,
         $avatarUrl,
         $profileUrl,
         $userData
     );
-
-    outputSuccess($githubUsername);
+    
+    outputSuccess($gitlabUsername);
 } catch (Exception $e) {
     outputError("Ошибка при сохранении данных в базу: " . $e->getMessage());
 }

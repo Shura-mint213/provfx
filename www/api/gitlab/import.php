@@ -1,5 +1,4 @@
 <?php
-
 define('IN_APP', true);
 require_once __DIR__ . '/../../../init.php';
 require_once __DIR__ . '/../oauth_helper.php';
@@ -12,10 +11,10 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Загружаем токен пользователя
-$integration = get_user_integration($_SESSION['user_id'], 'github');
+$integration = get_user_integration($_SESSION['user_id'], 'gitlab');
 
 if (!$integration || empty($integration['access_token'])) {
-    echo json_encode(['success' => false, 'error' => 'GITHUB_NOT_LINKED', 'message' => 'Аккаунт GitHub не подключен']);
+    echo json_encode(['success' => false, 'error' => 'GITLAB_NOT_LINKED', 'message' => 'Аккаунт GitLab не подключен']);
     exit;
 }
 
@@ -27,33 +26,41 @@ $params = json_decode($requestBody, true);
 $selectedRepos = $params['repos'] ?? [];
 
 if (empty($selectedRepos) || !is_array($selectedRepos)) {
-    echo json_encode(['success' => false, 'error' => 'EMPTY_REPOS', 'message' => 'Не выбраны репозитории для импорта']);
+    echo json_encode(['success' => false, 'error' => 'EMPTY_REPOS', 'message' => 'Не выбраны проекты для импорта']);
     exit;
 }
 
 $importedProjects = [];
 
-foreach ($selectedRepos as $repoFullName) {
-    // Безопасно парсим имя владельца и репозитория
-    $parts = explode('/', $repoFullName);
-    if (count($parts) !== 2) continue;
-    $owner = $parts[0];
-    $repoName = $parts[1];
+foreach ($selectedRepos as $repoId) {
+    // Если передан полный путь, url-кодируем его для API
+    $projectId = is_numeric($repoId) ? $repoId : urlencode($repoId);
     
-    // Запрашиваем информацию о репозитории
-    $url = "https://api.github.com/repos/{$owner}/{$repoName}";
-    $res = makeGithubApiRequest($token, $url);
+    // Запрашиваем информацию о проекте
+    $url = GITLAB_API_URL . "/projects/{$projectId}";
+    $res = makeGitlabApiRequest($token, $url);
     
     if ($res['code'] === 200) {
         $repoData = json_decode($res['body'], true);
         
-        $name = $repoData['name'] ?? $repoName;
+        $name = $repoData['name'] ?? '';
         $description = $repoData['description'] ?? '';
-        $repoUrl = $repoData['html_url'] ?? "https://github.com/{$repoFullName}";
-        $primaryLanguage = $repoData['language'] ?? '';
+        $repoUrl = $repoData['web_url'] ?? '';
+        
+        // Получаем основной язык программирования проекта
+        $langUrl = GITLAB_API_URL . "/projects/{$repoData['id']}/languages";
+        $langRes = makeGitlabApiRequest($token, $langUrl);
+        $primaryLanguage = '';
+        if ($langRes['code'] === 200) {
+            $languages = json_decode($langRes['body'], true);
+            if (is_array($languages) && !empty($languages)) {
+                arsort($languages);
+                $primaryLanguage = key($languages);
+            }
+        }
         
         // Автоматическое определение стека технологий
-        $techStack = detectGithubTechStack($token, $owner, $repoName, $primaryLanguage);
+        $techStack = detectGitlabTechStack($token, $repoData['id'], $primaryLanguage);
         $stackNotRecognized = empty($techStack);
         
         $importedProjects[] = [

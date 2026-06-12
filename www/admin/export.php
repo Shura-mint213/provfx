@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../../init.php';
-require_once __DIR__ . '/../api/github_helper.php';
+require_once __DIR__ . '/../api/oauth_helper.php';
 
 // Проверка авторизации
 if (!isset($_SESSION['user_id'])) {
@@ -58,6 +58,10 @@ if ($isExportRequested) {
     $export_github_username = isset($_REQUEST['export_github_username']);
     $export_github_token = isset($_REQUEST['export_github_token']);
     $export_github_token_confirm = isset($_REQUEST['export_github_token_confirm']);
+
+    $export_gitlab_username = isset($_REQUEST['export_gitlab_username']);
+    $export_gitlab_token = isset($_REQUEST['export_gitlab_token']);
+    $export_gitlab_token_confirm = isset($_REQUEST['export_gitlab_token_confirm']);
 
     // Получаем фильтры
     $filter_date_from = trim($_REQUEST['date_from'] ?? '');
@@ -133,6 +137,13 @@ if ($isExportRequested) {
 
     if (!empty($studentIds)) {
         $inClause = implode(',', array_map('intval', $studentIds));
+
+        // Загружаем интеграции из новой таблицы
+        $stmtInt = $pdo->query("SELECT * FROM user_integrations WHERE student_id IN ($inClause)");
+        $integrations = [];
+        while ($rowInt = $stmtInt->fetch(PDO::FETCH_ASSOC)) {
+            $integrations[$rowInt['student_id']][$rowInt['platform']] = $rowInt;
+        }
 
         if ($export_skills) {
             $skills = $pdo->query("SELECT student_id, name, level FROM skills WHERE student_id IN ($inClause) ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
@@ -225,9 +236,30 @@ if ($isExportRequested) {
     foreach ($students as $s) {
         $sid = (int)$s['student_id'];
         
-        // Расшифровываем GitHub токен, если он был запрошен
-        if (isset($s['github_token'])) {
-            $s['github_token'] = decryptGithubToken($s['github_token']);
+        // Наполняем данные GitHub
+        $githubInt = $integrations[$sid]['github'] ?? null;
+        if ($export_github_username) {
+            $s['github_username'] = $githubInt['username'] ?? $s['github_username'] ?? '';
+        }
+        if ($export_github_token && $export_github_token_confirm) {
+            if ($githubInt && !empty($githubInt['access_token'])) {
+                $s['github_token'] = decryptToken($githubInt['access_token']);
+            } else {
+                $s['github_token'] = isset($s['github_token']) ? decryptGithubToken($s['github_token']) : '';
+            }
+        }
+
+        // Наполняем данные GitLab
+        $gitlabInt = $integrations[$sid]['gitlab'] ?? null;
+        if ($export_gitlab_username) {
+            $s['gitlab_username'] = $gitlabInt['username'] ?? '';
+        }
+        if ($export_gitlab_token && $export_gitlab_token_confirm) {
+            if ($gitlabInt && !empty($gitlabInt['access_token'])) {
+                $s['gitlab_token'] = decryptToken($gitlabInt['access_token']);
+            } else {
+                $s['gitlab_token'] = '';
+            }
         }
         
         $studentsMap[$sid] = $s;
@@ -520,6 +552,14 @@ if ($isExportRequested) {
 
     if ($export_github_token && $export_github_token_confirm) {
         $columns['github_token'] = 'GitHub Токен';
+    }
+
+    if ($export_gitlab_username) {
+        $columns['gitlab_username'] = 'GitLab Username';
+    }
+
+    if ($export_gitlab_token && $export_gitlab_token_confirm) {
+        $columns['gitlab_token'] = 'GitLab Токен';
     }
 
     if ($export_skills) $columns['skills'] = 'Навыки';
@@ -921,6 +961,42 @@ if ($isExportRequested) {
                     </div>
                 </div>
 
+                <!-- Раздел GitLab данных -->
+                <div>
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4"><i class="fa-brands fa-gitlab mr-2"></i> Данные интеграции с GitLab</h3>
+                    <div class="space-y-4">
+                        <label class="flex items-start p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-2xl cursor-pointer transition">
+                            <input type="checkbox" name="export_gitlab_username" class="mt-1 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-4 h-4">
+                            <div class="ml-3">
+                                <span class="text-sm font-bold text-slate-700">GitLab username</span>
+                                <p class="text-xs text-slate-400">Логины привязанных GitLab аккаунтов</p>
+                            </div>
+                        </label>
+
+                        <div class="p-3 bg-red-50/50 border border-red-100 rounded-2xl space-y-3">
+                            <label class="flex items-start cursor-pointer">
+                                <input type="checkbox" id="gitlab_token" name="export_gitlab_token" class="mt-1 rounded text-red-600 focus:ring-red-500 border-slate-300 w-4 h-4">
+                                <div class="ml-3">
+                                    <span class="text-sm font-bold text-red-700">GitLab токен (конфиденциально!)</span>
+                                    <p class="text-xs text-red-500">Токены доступа к GitLab API. Экспортируйте с крайней осторожностью.</p>
+                                </div>
+                            </label>
+
+                            <!-- Контейнер дополнительного подтверждения (по умолчанию скрыт) -->
+                            <div id="gitlab_warning_container" class="hidden pl-7 space-y-2 border-l-2 border-red-300 transition duration-200">
+                                <div class="text-xs text-red-600 font-semibold bg-red-100/60 p-3 rounded-xl flex items-start">
+                                    <i class="fa-solid fa-triangle-exclamation mr-2 mt-0.5 text-red-700"></i>
+                                    <span>Внимание! Токены доступа будут выгружены в расшифрованном виде. Утечка файла экспорта может скомпрометировать профили пользователей.</span>
+                                </div>
+                                <label class="flex items-center space-x-2 cursor-pointer pt-1">
+                                    <input type="checkbox" id="gitlab_token_confirm" name="export_gitlab_token_confirm" class="rounded text-red-600 focus:ring-red-500 border-red-300 w-3.5 h-3.5">
+                                    <span class="text-xs font-bold text-red-700">Я понимаю риски безопасности и подтверждаю экспорт токенов</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Фильтры -->
                 <div>
                     <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4"><i class="fa-solid fa-filter mr-2"></i> Фильтры</h3>
@@ -1000,6 +1076,16 @@ if ($isExportRequested) {
             }
         });
 
+        document.getElementById('gitlab_token').addEventListener('change', function() {
+            const warningContainer = document.getElementById('gitlab_warning_container');
+            if (this.checked) {
+                warningContainer.classList.remove('hidden');
+            } else {
+                warningContainer.classList.add('hidden');
+                document.getElementById('gitlab_token_confirm').checked = false;
+            }
+        });
+
         // Блокируем отправку если токен выбран, но нет галочки подтверждения
         document.querySelector('form').addEventListener('submit', function(e) {
             const tokenCheckbox = document.getElementById('github_token');
@@ -1008,6 +1094,15 @@ if ($isExportRequested) {
             if (tokenCheckbox.checked && !confirmCheckbox.checked) {
                 e.preventDefault();
                 alert('Пожалуйста, подтвердите согласие с рисками безопасности экспорта GitHub токенов, установив соответствующую галочку.');
+                return;
+            }
+
+            const gitlabTokenCheckbox = document.getElementById('gitlab_token');
+            const gitlabConfirmCheckbox = document.getElementById('gitlab_token_confirm');
+            
+            if (gitlabTokenCheckbox.checked && !gitlabConfirmCheckbox.checked) {
+                e.preventDefault();
+                alert('Пожалуйста, подтвердите согласие с рисками безопасности экспорта GitLab токенов, установив соответствующую галочку.');
             }
         });
     </script>

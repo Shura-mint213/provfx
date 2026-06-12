@@ -1,7 +1,7 @@
 <?php
 define('IN_APP', true);
 require_once __DIR__ . '/../../../../init.php';
-require_once __DIR__ . '/../../github_helper.php';
+require_once __DIR__ . '/../../oauth_helper.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
