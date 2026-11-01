@@ -13,6 +13,7 @@ composer.lock
 # IDE и системные файлы
 .idea/
 .vscode/
+.vs/
 *.swp
 *.swo
 .DS_Store
